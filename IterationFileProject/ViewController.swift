@@ -90,6 +90,8 @@ class ViewController: UIViewController {
                         print("file directory")
                     } else {
                         print("file path")
+                        var fileSize = self.fileSize(fromPath: filep.path)
+                        print("file size is ", fileSize)
                     }
                 }
                 print(directoryContents)
