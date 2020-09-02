@@ -9,8 +9,15 @@
 import Foundation
 
 class FileData {
-    var Filepath: String?
-    var FileSize: UInt64?
-    var FileLevel: Int?
+    var filePath: String?
+    var fileSize: UInt64?
+    var fileLevel: Int?
     var isDirectory: Bool = false;
+    
+    func generateData(path: String?, size: UInt64?, level: Int?, isDirectory: Bool?) {
+        self.filePath = path ?? ""
+        self.fileSize = size ?? 0
+        self.fileLevel = level ?? 0
+        self.isDirectory = isDirectory ?? false
+    }
 }

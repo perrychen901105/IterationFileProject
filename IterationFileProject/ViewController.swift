@@ -13,18 +13,41 @@ class ViewController: UIViewController {
     @IBOutlet weak var filepathTextField: UITextField!
     @IBOutlet weak var pathsTextView: UITextView!
     
+//    For testing, create folder in advance, that can access in Files App.
+    func createFolder() {
+        let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+        let documentsDirectory = paths[0]
+        let docURL = URL(string: documentsDirectory)!
+        let dataPath = docURL.appendingPathComponent("MyFolder")
+        if !FileManager.default.fileExists(atPath: dataPath.absoluteString) {
+            do {
+                try FileManager.default.createDirectory(atPath: dataPath.absoluteString, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print(error.localizedDescription);
+            }
+        }
+    }
+    
+    @IBAction func createFileFolder(_ sender: UIButton) {
+        createFolder();
+    }
+    
+//    check if path is file or dir
     internal func fileIsDir(fileURL: NSURL) -> Bool {
         var isDir: ObjCBool = false;
         FileManager.default.fileExists(atPath: fileURL.path!, isDirectory: &isDir)
         return isDir.boolValue
     }
     
-    func fileSize(fromPath path: String) -> String? {
+    func fileSize(fromPath path: String) -> UInt64? {
         guard let size = try? FileManager.default.attributesOfItem(atPath: path)[FileAttributeKey.size],
             let fileSize = size as? UInt64 else {
             return nil
         }
-
+        return fileSize;
+    }
+    
+    func makeFileSizeReadable(fileSize: UInt64) -> String {
         // bytes
         if fileSize < 1023 {
             return String(format: "%lu bytes", CUnsignedLong(fileSize))
@@ -44,70 +67,76 @@ class ViewController: UIViewController {
         return String(format: "%.1f GB", floatSize)
     }
     
-    func createFolder() {
-        let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
-        let documentsDirectory = paths[0]
-        let docURL = URL(string: documentsDirectory)!
-        let dataPath = docURL.appendingPathComponent("MyFolder")
-        if !FileManager.default.fileExists(atPath: dataPath.absoluteString) {
-            do {
-                try FileManager.default.createDirectory(atPath: dataPath.absoluteString, withIntermediateDirectories: true, attributes: nil)
-            } catch {
-                print(error.localizedDescription);
-            }
-        }
-    }
-    
-    @IBAction func createFileFolder(_ sender: UIButton) {
-        createFolder();
-    }
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
     }
     
-    func getFilesInDirectory(path: URL) {
+    func getFilesInDirectory(path: URL, size: inout UInt64) {
         if fileIsDir(fileURL: path as NSURL) {
-            
-        } else {
-            
-        }
-    }
-    
-    @IBAction func getAllFilePath(_ sender: UIButton) {
-        if filepathTextField.text?.count ?? 0 > 0 {
-            print("%@", filepathTextField.text ?? "");
-            let documentsUrl =  FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let fileData = FileData();
             do {
-                // Get the directory contents urls (including subfolders urls)
-                let directoryContents = try FileManager.default.contentsOfDirectory(at: documentsUrl, includingPropertiesForKeys: nil)
-                
-                for filep in directoryContents {
-                    if fileIsDir(fileURL: filep as NSURL) {
-                        getFilesInDirectory(path: filep);
-                        print("file directory")
-                    } else {
-                        print("file path")
-                    }
+                let subContent = try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: nil)
+                for subFile in subContent {
+                    getFilesInDirectory(path: subFile, size: &size);
                 }
-                print(directoryContents)
-                
-                // if you want to filter the directory contents you can do like this:
-//                let mp3Files = directoryContents.filter{ $0.pathExtension == "mp3" }
-//                print("mp3 urls:",mp3Files)
-//                let mp3FileNames = mp3Files.map{ $0.deletingPathExtension().lastPathComponent }
-//                print("mp3 list:", mp3FileNames)
-
             } catch {
                 print(error)
             }
         } else {
-            // alert user has not input the file path
+            size += self.fileSize(fromPath: path.path) ?? 0
         }
     }
     
+    @IBAction func getAllFilePath(_ sender: UIButton) {
+        self.pathsTextView.text = ""
+        let documentsUrl =  FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let folderPath = documentsUrl.appendingPathComponent(filepathTextField.text!);
+        var findFolder: ObjCBool = false;
+        // check if folder is exist
+        if !FileManager.default.fileExists(atPath: folderPath.path, isDirectory: &findFolder) {
+            let alertController = UIAlertController(title: "Warning", message:
+                "Folder does not exist", preferredStyle: .alert)
+            alertController.addAction(UIAlertAction(title: "Dismiss", style: .default))
+            self.present(alertController, animated: true, completion: nil)
+            return;
+        }
+        var fileArray = [FileData]()
+        do {
+            let directoryContents = try FileManager.default.contentsOfDirectory(at: folderPath, includingPropertiesForKeys: nil)
+            
+            for fileInDir in directoryContents {
+                let fileData = FileData();
+                // file size
+                var fileTotalSize: UInt64 = 0;
+                var isDir: Bool = false;
+                if fileIsDir(fileURL: fileInDir as NSURL) {
+                    getFilesInDirectory(path: fileInDir, size: &fileTotalSize);
+                    isDir = true
+                } else {
+                    fileTotalSize = self.fileSize(fromPath: fileInDir.path) ?? 0
+                }
+//                generate file data
+                let fileName = FileManager.default.displayName(atPath: fileInDir.path);
+                fileData.generateData(path: fileName, size: fileTotalSize, level: 0, isDirectory: isDir);
+                fileArray.append(fileData)
+            }
+//            print file paths
+            var filesString: String = ""
+            for singleFile in fileArray {
+                var fileString = singleFile.isDirectory ? "DIR " : "FILE "
+                fileString += singleFile.filePath ?? ""
+                fileString += " ";
+                fileString += self.makeFileSizeReadable(fileSize: singleFile.fileSize!)
+                print(fileString)
+                filesString += "\n"
+                filesString += fileString
+            }
+            self.pathsTextView.text = filesString
+        } catch {
+            print(error)
+        }
+   
+    }
 
 }
 
